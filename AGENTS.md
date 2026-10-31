@@ -1,0 +1,48 @@
+# Agent guide — H3 Audio Retake Studio
+
+Read this file and [README.md](README.md) before using or changing the studio. The user's current instructions take precedence over this guide. This project is experimental: distinguish implemented features from ideas, measurements from hypotheses, and generated results from verified results.
+
+## Start here
+
+- This directory is a ComfyUI custom node, not a separate required web server. ComfyUI must load it at startup. Open `http://127.0.0.1:8188/audio-retake/`, replacing the port when appropriate. A restart of ComfyUI is required after installing or changing Python node code. Do not interrupt a running render or discard the user's unsaved work; explain a restart is needed and let them save their work first.
+- If the page fails, first check whether ComfyUI is reachable, whether `/audio-retake/` returns a response, and whether `/object_info/AudioRetakePikaSampler` contains the node. A running ComfyUI started before installation cannot register the new route until restarted. Inspect ComfyUI startup logs for import errors. A browser network error alone does not establish the cause. Avoid weakening local security or changing proxies and firewall settings as a first step.
+- Find models and nodes via the local ComfyUI `/object_info` endpoint and the UI's **H3 model setup**. Model names, install paths, GPUs and ComfyUI ports differ across machines; do not assume this developer's filenames or paths apply elsewhere. Missing node packs and model licenses are documented in the README. Do not download large weights or gated models without checking access, disk space and the user's intent.
+- Use the GUI to select the source, waveform interval, take, speaker and mask; these are user decisions. The audio preset and lip-sync preset are API-format graphs, not standalone packaged projects. A downloaded workflow can refer to local inputs and model names; it does not include media, weights or the user's earlier interactive choices.
+
+## Code map
+
+- `__init__.py`: localhost-only studio routes, file/path checks, export handling and `AudioRetakePikaSampler`.
+- `colour_match.py`: optional experimental full-frame color calibration for export.
+- `web/index.html`, `web/style.css`: interface and layout.
+- `web/app.js`: source loading, waveform, audio generation, take management and audio export.
+- `web/models.js`: detects installed model options and maps selections into graphs.
+- `web/lip.js`: face selection/tracking, manually drawn oval mask, reference frame, repair, comparison and video export.
+- `web/turns.js`: manually labelled dialogue turns and multi-turn export.
+- `web/h3_audio_preset.json`, `web/lip_preset.json`: ComfyUI API graph templates. Inspect the current files and installed node schemas before changing connections or input names.
+
+The browser coordinates multiple ComfyUI jobs. It is one interface, not a single unattended graph. The current lip-sync input is resampled at 24 fps and uses frame padding; `lipRange()` in `web/lip.js` enforces a short passage (currently about seven seconds), sufficient trailing source frames, and the 5 + 17n frame rule. Check the actual implementation when changing these constraints. Model selection is persisted in browser local storage; project session, media and takes are not.
+
+## Practical workflow and known limitations
+
+1. Preserve the original; work on a copy. Select a short interval with a clearly visible speaker. Establish expected words, speaker, original voice reference, desired acting and intended final audio. Listen to the reference before using it: laughter, background voices or music can influence the generated take. An instruction to avoid laughing does not guarantee it will disappear. If the agent cannot listen, say so and have the user judge the takes.
+2. Generate several audio candidates or import a supplied recording. Review the actual speech and boundaries, not just speech-to-text: transcription can miss laughter, artifacts, wrong emotion or voice mismatch. A selected interval replaces the complete audible mix, not an isolated speaker; preserve overlap and ambience with stems or a careful mix when required.
+3. Point at the intended face, review the tracking preview across the passage, and mark the target region. The app tracks a crop, while the manually drawn oval stays fixed in that crop: it is not automatic lip tracking or SAM segmentation. A mouth-region mask and a full-face crop are different things. No automatic speaker diarization is implemented.
+4. Select a clear original frame as the face reference. `ImageFromBatch` supplies the selected tracked crop to H3 in the current graph; the default is the first tracked frame. A reference guides identity but does not guarantee the exact same face or gaze. The existing lip-sync pass already uses FaceRefine tracking, crop and stitch nodes; that is not the same as a separate full FaceRefine enhancement pass. Treat such a pass as a potential optional feature, not an existing switch.
+5. Compare denoise and mask choices with identical inputs, prompt, seed, reference and duration when possible. Pika's discrete sampling schedule rounds denoise to steps. Higher denoise can allow more change, while lower values can retain unwanted original mouth movement; neither guarantees correct speech or facial expression. A larger face mask may improve expressive continuity but can alter identity, eye direction and the surroundings. Review each approach visually.
+6. A static spatial mask does not decide when speech stops. Check any silence after the replacement line: generated or original mouth movements can continue. Extending dialogue, temporal conditioning, per-frame masks, and a separate silent continuation are hypotheses to compare; in previous experiments, asking H3 to close the mouth during a silent continuation did not reliably stop the mouth. Do not present it as a solved feature.
+7. Preview original and repaired video, mask edges, tracking and audio sync, including boundaries and color. The optional face-crop color match and whole-frame color calibration are distinct. Check multiple timestamps and compare against the source; a global correction can harm footage with changes in lighting or framing. Export creates a new re-encoded video, so untouched material is not bit-identical. Keep original and candidate outputs available for review.
+
+## Research and improvements
+
+When asked to investigate a new method, inspect the installed node packs, workflows and their versions first. Check current primary sources: model cards, official papers and repository documentation, including licenses, access requirements, resource needs and compatibility with the installed ComfyUI/H3 nodes. If a relevant community knowledge tool is available, use it as supplementary evidence and label anecdotal advice. Clearly cite sources and distinguish their claims from your own inference or test results. Do not assume an article about one model works with another, or claim a node guarantees identity, lip-sync or perfect audio isolation.
+
+Potential areas to investigate include audio timing and silence handling; voice-reference trimming and take review; identity-preserving full-face refinement as an optional previewable second pass; tracked or time-varying masks; source separation for overlapping speech; and color continuity. The user previously chose not to pursue the LTX approach after a slow gated download; do not resume it without a new request. Research is not authorization to download weights, install software, submit media externally or publish private content.
+
+For a meaningful comparison, record the input, exact interval, prompt, reference, seed, graph, settings, model versions, hardware and output. Change one factor at a time when feasible. Review voice quality, words, identity, gaze, expression, sync, mouth closure in silence, mask flicker, color, boundaries and untouched media. Present uncertainty and preserve a rollback path. If a requested full-clip pass is expensive or the clip contains multiple speakers/shots, assess tracking, memory, chunk boundaries and identity selection before running it.
+
+## Development, security and verification
+
+- Treat personal videos, voice references, prompts and generated assets as private unless the user explicitly makes them public. Do not commit or upload models, credentials, logs, local paths or private media. Respect the localhost-only checks, origin checks and path validation in `__init__.py`; do not expose ComfyUI or the studio to the network as a troubleshooting shortcut.
+- Do not overwrite source media or remove user files. Avoid restarting an active ComfyUI or canceling jobs without checking whose work they are; preserve unrelated work. Respect licenses of ComfyUI, node packs, models and examples separately from this project's MIT license.
+- Before a code change, inspect the relevant current implementation and dependencies; keep the browser workflow simple and the README accurate. Test changes at the appropriate scope: Python compilation, `node --check` for modified JavaScript, focused endpoint/export tests and browser checks where applicable. For video/audio changes, inspect actual exports, timing, audio and boundaries; report if listening or another verification is unavailable. Avoid claiming a pipeline works merely because the graph queues successfully.
+- Public demo media and external publishing require the user's authorization. For user-specific test data, keep it outside the repository unless explicitly approved. Check `git status` and the staged diff before committing. Never include credentials in command output or remotes.

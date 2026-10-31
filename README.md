@@ -8,6 +8,10 @@ A local, browser-based audio and lip-sync repair studio for ComfyUI and MiniMax 
 
 [Watch the studio walkthrough and edited cyclops scene](https://github.com/Nebuluss/H3-AudioRetake-studio/raw/refs/heads/main/demo/studio-walkthrough.mp4). The walkthrough shows actual interface captures followed by a generated dialogue edit. The longer final passage in this example was rendered with a custom ComfyUI workflow and assembled in Tesseract; the studio currently limits individual lip repairs to about seven seconds.
 
+## AI coding agents
+
+[AGENTS.md](AGENTS.md) explains the current workflow, limitations, troubleshooting, research and safe testing for coding agents. Claude can also discover [CLAUDE.md](CLAUDE.md).
+
 ## Install
 
 1. Install and start an up-to-date [ComfyUI](https://github.com/comfyanonymous/ComfyUI) with a working MiniMax H3 setup. This version is tested locally, with ComfyUI and the browser on the same machine.
