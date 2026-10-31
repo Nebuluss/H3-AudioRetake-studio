@@ -4,10 +4,21 @@ A local, browser-based audio and lip-sync repair studio for ComfyUI and MiniMax 
 
 > **Early experimental software.** Check the generated words, voice, face tracking, lip-sync, transitions and colors. The model may change a face or produce artifacts.
 
+## Demo
+
+[Watch the studio walkthrough and edited cyclops scene](https://github.com/Nebuluss/H3-AudioRetake-studio/raw/refs/heads/main/demo/studio-walkthrough.mp4). The walkthrough shows actual interface captures followed by a generated dialogue edit. The longer final passage in this example was rendered with a custom ComfyUI workflow and assembled in Tesseract; the studio currently limits individual lip repairs to about seven seconds.
+
 ## Install
 
 1. Install and start an up-to-date [ComfyUI](https://github.com/comfyanonymous/ComfyUI) with a working MiniMax H3 setup. This version is tested locally, with ComfyUI and the browser on the same machine.
-2. Place this repository in `ComfyUI/custom_nodes/H3-AudioRetake-studio`. Install these ComfyUI node packs and their dependencies as directed by their authors:
+2. Clone [this repository](https://github.com/Nebuluss/H3-AudioRetake-studio) into `ComfyUI/custom_nodes`:
+
+   ```bash
+   cd ComfyUI/custom_nodes
+   git clone https://github.com/Nebuluss/H3-AudioRetake-studio.git
+   ```
+
+   Install these ComfyUI node packs and their dependencies as directed by their authors:
    - [ComfyUI-H3-Motion-Context-MultiRef](https://github.com/seitanism/ComfyUI-H3-Motion-Context-MultiRef)
    - [ComfyUI-H3-FaceRefine](https://github.com/Carasibana/ComfyUI-H3-FaceRefine)
    - [ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite)
@@ -39,7 +50,7 @@ For dialogue, label non-overlapping waveform passages, open each turn and render
 
 ## Local data and security
 
-The interface and its export endpoints accept connections only from localhost. ComfyUI itself may have different network settings; this project does not change them. Uploaded source files, voice references, masks and intermediate clips are copied to ComfyUI's `input/AudioRepairStudio` and `output/AudioRepairStudio` folders. Full exports go to `output/AudioRepairStudio/exports`. Remove files you no longer need using your usual file manager. No media, models, tokens or personal demo files are included in this repository.
+The interface and its export endpoints accept connections only from localhost. ComfyUI itself may have different network settings; this project does not change them. Uploaded source files, voice references, masks and intermediate clips are copied to ComfyUI's `input/AudioRepairStudio` and `output/AudioRepairStudio` folders. Full exports go to `output/AudioRepairStudio/exports`. Remove files you no longer need using your usual file manager. The repository includes the public demonstration video; it does not include voice-reference files, model weights or tokens.
 
 ## Project status
 
