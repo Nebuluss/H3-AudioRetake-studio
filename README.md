@@ -68,7 +68,11 @@ The interface and its export endpoints accept connections only from localhost. C
 
 ## Project status
 
-This is an early community prototype, tested with a local Windows/NVIDIA setup. Other platforms, model variants, GPUs and unusual frame rates need more testing. LTX Dub-It is not part of this project. Contributions and issue reports with reproducible, shareable examples are welcome.
+This is an early community prototype, tested with a local Windows/NVIDIA setup. Other platforms, model variants, GPUs and unusual frame rates need more testing. Contributions and issue reports with reproducible, shareable examples are welcome.
+
+## Acknowledgements
+
+Special thanks to [Alisson Anjos](https://github.com/alisson-anjos) for [Henge](https://github.com/alisson-anjos/Henge), whose friendly interface helped inspire this studio, and to [seitanism](https://github.com/seitanism) for [ComfyUI-H3-Motion-Context-MultiRef](https://github.com/seitanism/ComfyUI-H3-Motion-Context-MultiRef) and its H3 audio/video tools.
 
 ## License
 
