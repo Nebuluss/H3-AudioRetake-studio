@@ -15,8 +15,9 @@ from server import PromptServer
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
-ALLOWED_ASSETS = {"index.html", "app.js", "models.js", "lip.js", "turns.js", "style.css", "h3_audio_preset.json", "lip_preset.json"}
+ALLOWED_ASSETS = {"index.html", "app.js", "models.js", "lip.js", "joint.js", "acting.js", "transcript.js", "project.js", "turns.js", "style.css", "h3_audio_preset.json", "lip_preset.json"}
 routes = PromptServer.instance.routes
+NO_CACHE = {"Cache-Control": "no-cache"}  # Page and scripts must update together.
 
 
 def local_request(request, *, write=False):
@@ -42,7 +43,7 @@ def require_local(request, *, write=False):
 @routes.get("/audio-retake/")
 async def index(request):
     require_local(request)
-    return web.FileResponse(WEB / "index.html")
+    return web.FileResponse(WEB / "index.html", headers=NO_CACHE)
 
 
 @routes.get("/audio-retake/api/info")
@@ -86,7 +87,8 @@ def build_export(args):
     for turn in turns:
         if not isinstance(turn, dict):
             raise ValueError("Invalid turn.")
-        repair = safe_file(folder_paths.get_output_directory(), turn.get("repair"))
+        # A voice-only retake has no repair video; the source picture stays as it is.
+        repair = turn.get("repair") and safe_file(folder_paths.get_output_directory(), turn.get("repair"))
         start, end, clip_start = (float(turn[k]) for k in ("start", "end", "clipStart"))
         if not all(math.isfinite(x) for x in (start, end, clip_start)) or not 0 <= clip_start <= start < end <= 100000:
             raise ValueError("Invalid selected interval.")
@@ -107,6 +109,15 @@ def build_export(args):
         raise ValueError("Invalid color matching setting.")
     try:
         with tempfile.TemporaryDirectory(prefix="audio-retake-") as tmp:
+            resolved = [item for item in resolved if item[0]]
+            if not resolved:
+                base = ["ffmpeg", "-v", "error", "-y", "-i", str(source), "-i", str(audio), "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
+                proc = subprocess.run(base + ["-c:v", "copy", str(output / name)], capture_output=True, text=True, timeout=1200, creationflags=flags)
+                if proc.returncode:
+                    proc = subprocess.run(base + ["-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", str(output / name)], capture_output=True, text=True, timeout=1200, creationflags=flags)
+                if proc.returncode:
+                    raise RuntimeError("Video export failed: " + proc.stderr[-1200:])
+                return "/audio-retake/api/result/" + name
             if args.get("matchColors", False):
                 from .colour_match import match_repair_color
                 resolved = [(match_repair_color(source, repair, start, end, clip_start, tmp, i), start, end, clip_start)
@@ -152,7 +163,7 @@ async def asset(request):
     name = request.match_info["name"]
     if name not in ALLOWED_ASSETS:
         raise web.HTTPNotFound()
-    return web.FileResponse(WEB / name)
+    return web.FileResponse(WEB / name, headers=NO_CACHE)
 
 
 class AudioRetakePikaSampler:
@@ -189,5 +200,66 @@ class AudioRetakePikaSampler:
         return (patched, comfy.samplers.sampler_object("lcm"), sigmas)
 
 
-NODE_CLASS_MAPPINGS = {"AudioRetakePikaSampler": AudioRetakePikaSampler}
-NODE_DISPLAY_NAME_MAPPINGS = {"AudioRetakePikaSampler": "Audio Retake - Pika H3 Flex (experimental)"}
+def timed_ramp(frames, start, end, feather, fps=24.0):
+    """Per-frame strength: 1 inside [start, end], easing to 0 over feather seconds."""
+    import torch
+    t = (torch.arange(frames, dtype=torch.float32) + 0.5) / fps
+    if feather <= 0:
+        return ((t >= start) & (t <= end)).float()
+    x = torch.minimum(((t - start + feather) / feather), ((end + feather - t) / feather)).clamp(0.0, 1.0)
+    return x * x * (3.0 - 2.0 * x)
+
+
+class AudioRetakeTimedMask:
+    """Limit a spatial mask to one interval, for the video and audio noise masks."""
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "mask": ("MASK",),
+            "frames": ("INT", {"default": 124, "min": 1, "max": 3600}),
+            "start_seconds": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 3600.0, "step": 0.001, "tooltip": "Interval start, relative to the first frame of this clip."}),
+            "end_seconds": ("FLOAT", {"default": 3.0, "min": 0.0, "max": 3600.0, "step": 0.001, "tooltip": "Interval end, relative to the first frame of this clip."}),
+            "feather_seconds": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 5.0, "step": 0.01, "tooltip": "Fade outside the interval. The interval itself stays fully regenerated."}),
+        }}
+
+    RETURN_TYPES = ("MASK", "MASK")
+    RETURN_NAMES = ("video_mask", "audio_mask")
+    FUNCTION = "build"
+    CATEGORY = "Audio Retake Studio"
+
+    def build(self, mask, frames, start_seconds, end_seconds, feather_seconds):
+        if end_seconds <= start_seconds:
+            raise ValueError("The interval end must be after its start.")
+        spatial = mask if mask.ndim == 3 else mask.unsqueeze(0)
+        if spatial.shape[0] not in (1, frames):
+            raise ValueError("The mask must hold one frame or one frame per clip frame.")
+        ramp = timed_ramp(frames, start_seconds, end_seconds, feather_seconds).to(spatial)
+        return (spatial.expand(frames, -1, -1) * ramp.view(-1, 1, 1), ramp.view(-1, 1, 1))
+
+
+class AudioRetakeTranscribe:
+    """Transcribe speech with word timings, using a local Whisper folder."""
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"audio": ("AUDIO",), "language": ("STRING", {"default": "", "tooltip": "Language name or code. Leave empty to detect it."})}}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "transcribe"
+    OUTPUT_NODE = True
+    CATEGORY = "Audio Retake Studio"
+
+    def transcribe(self, audio, language):
+        import torch
+        import comfy.model_management as management
+        from .transcribe import find_model, transcribe_words
+        device = management.get_torch_device()
+        dtype = torch.float16 if device.type == "cuda" else torch.float32
+        words = transcribe_words(audio["waveform"], audio["sample_rate"], find_model(folder_paths.models_dir), language.strip().lower(), device, dtype)
+        management.soft_empty_cache()
+        text = " ".join(word["word"] for word in words)
+        return {"ui": {"transcript": [json.dumps(words, ensure_ascii=False)]}, "result": (text,)}
+
+
+NODE_CLASS_MAPPINGS = {"AudioRetakePikaSampler": AudioRetakePikaSampler, "AudioRetakeTimedMask": AudioRetakeTimedMask, "AudioRetakeTranscribe": AudioRetakeTranscribe}
+NODE_DISPLAY_NAME_MAPPINGS = {"AudioRetakePikaSampler": "Audio Retake - Pika H3 Flex (experimental)", "AudioRetakeTimedMask": "Audio Retake - Timed AV Mask", "AudioRetakeTranscribe": "Audio Retake - Transcribe Words"}
