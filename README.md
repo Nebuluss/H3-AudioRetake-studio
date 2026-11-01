@@ -6,7 +6,7 @@ A local, browser-based audio and lip-sync repair studio for ComfyUI and MiniMax 
 
 ## Demo
 
-[Watch the narrated studio presentation](https://github.com/Nebuluss/H3-AudioRetake-studio/raw/refs/heads/main/demo/H3_Audio_Retake_Studio_presentation_narrated.mp4) (2½ minutes). It walks through the interface, retake modes and example results.
+[Watch the narrated studio presentation](https://github.com/Nebuluss/H3-AudioRetake-studio/raw/refs/heads/main/demo/H3_Audio_Retake_Studio_presentation_narrated.mp4) (4 minutes). It walks through the interface, retake modes, sound and track retakes, and example results.
 
 [Watch the studio walkthrough and edited cyclops scene](https://github.com/Nebuluss/H3-AudioRetake-studio/raw/refs/heads/main/demo/studio-walkthrough.mp4). The walkthrough shows actual interface captures followed by a generated dialogue edit. The longer final passage in this example was rendered with a custom ComfyUI workflow and assembled in Tesseract; the studio currently limits individual lip repairs to about seven seconds.
 
@@ -45,7 +45,24 @@ The Pika sampler node bundled here follows an experimental six-step ComfyUI sche
 
 ### Voice only and off-screen voice (experimental)
 
-**Voice only** repairs speech and keeps the source picture. Export attempts to copy the video stream; if that fails, it falls back to re-encoding. Enter the words, select the passage and render; tracking the face is optional and gives H3 a closer view of the lips. **Off-screen voice** does the same for a speaker outside the frame. **Match level to nearby speech** adjusts the retake by up to 6 dB, and **Free acting** hides the surrounding speech from H3 so the acting direction has more effect. **Variations** renders several seeds and ranks them by how many expected words local Whisper hears. Leave **Keep the original ambience** off when the noise is the defect, because the separated background would bring it back. **Transcribe** uses PyTorch, torchaudio, Transformers and a local Hugging Face-format Whisper model folder under `models/whisper` to build a clickable word list; click a word to select it and shift-click to extend. The current project is saved in this browser and can be restored from the header; clearing site data removes it.
+**Voice only** repairs speech and keeps the source picture. Export attempts to copy the video stream; if that fails, it falls back to re-encoding. Enter the words, select the passage and render; tracking the face is optional and gives H3 a closer view of the lips. **Off-screen voice** does the same for a speaker outside the frame. **Match level to nearby speech** adjusts the retake by up to 6 dB, and **Free acting** hides the surrounding speech from H3 so the acting direction has more effect. **Variations** renders several seeds and ranks them by how many expected words local Whisper hears. Fill in **Language** for that score: left empty, Whisper detects the language phrase by phrase, so short noises can come out as another language and a correct take can score 0%. Leave **Keep the original ambience** off when the noise is the defect, because the separated background would bring it back. **Transcribe** uses PyTorch, torchaudio, Transformers and a local Hugging Face-format Whisper model folder under `models/whisper` to build a clickable word list; click a word to select it and shift-click to extend. The current project is saved in this browser and can be restored from the header; clearing site data removes it.
+
+### Redo the SFX (experimental)
+
+Choose **Redo the SFX** at the top of the Retake panel to replace the sound of a shot instead of a line. No mask or tracking is needed, and a video with no sound track opens too. The studio selects the whole clip; drag on the waveform to redo one passage instead. H3 keeps the real frames in its video latent and regenerates only the audio, so the export normally copies the source picture unchanged. One pass covers up to about 15 seconds.
+
+Leave **Sound to generate** empty for the natural sound of the shot, or describe what you want. **Suggest from the video** asks a local [Ollama](https://ollama.com) vision model, such as Gemma, to look at frames across the selection and write a prompt for you to edit. It can name things that are not in the shot, so check it. Its wording also sets the level: on a clip with faint ambience, a suggestion that said "gentle" came out about 20 dB quieter than a direct request for strong wind. **Keep the original voices** separates the voices from the source with Mel-Band RoFormer and places the new sound under them. Use **Retake gain** to set the level of the new sound; it applies at export, so you can change it after rendering.
+
+### Tracks (experimental)
+
+**Split into voices and sound** separates the source with Mel-Band RoFormer and opens two tracks under the waveform: **Voices**, and **Sound** for everything else, music included. Sound is the source minus Voices, so at 0 dB the two add back to the source exactly. The separator is built for singing and speech, so laughter or a shout may land on either track; solo each one to check.
+
+- Each track has **M** (mute), **S** (solo) and a level from -24 to +12 dB. Playback follows them live, and **Hear the source** switches back to the original for comparison.
+- Select a passage on any waveform, then choose **Redo the sound here** or **Redo the voice here**. The passage opens in the Retake panel and appears on its track when rendered; a retake changes only that track. Sound passages use Redo the SFX, and H3 hears only the Sound track around the passage. Where lips move, H3 can still invent speech; voice separation keeps it out of the new sound. Voice passages use your line mode, or Voice only if you were on Lip-sync.
+- Passages can overlap when they are on different tracks: you can redo the sound behind a line and the line itself. Passages on the same track still cannot overlap.
+- **Export mix** puts what you hear on the source video, with your levels, Mute and Solo applied, and it works with no retake at all. The other export buttons use the tracks too once they are open. The picture stays identical unless a passage changed the mouth. **Download tracks** saves both as WAV files at full level, retakes included.
+
+Tracks are saved with the project. Music and effects share the Sound track, because separating them needs another model.
 
 ### Joint retake (experimental)
 
@@ -59,7 +76,7 @@ For dialogue, or several separate areas of one clip, add each waveform passage a
 - Replacing an audio interval replaces everything audible there, including other voices and ambient sound. Use separate stems or a careful external mix when needed.
 - Face selection uses FaceRefine detection and tracking, with a manually drawn oval fixed to the crop. It is **not SAM 3.1**, independent lip tracking, or automatic diarization. Inspect the colored tracking preview for switches and missed frames.
 - The model can alter the face, even with a face reference, and the replacement may not be perfectly synchronized. The color calibration cannot guarantee continuity.
-- Each lip repair is a short single-shot passage (about seven seconds maximum) and requires enough source frames after the interval for H3 padding. Browser-supported codecs and the upload limit apply. A project with takes or turns can be saved in this browser and restored from the header; browser storage limits and clearing site data can remove it. Opening a file alone does not replace the saved project. Downloaded files and ComfyUI output files remain separately.
+- Each lip repair is a short single-shot passage (about seven seconds maximum) and requires enough source frames after the interval for H3 padding. Browser-supported codecs and the upload limit apply. A project with takes, turns or tracks can be saved in this browser and restored from the header; browser storage limits and clearing site data can remove it. Opening a file alone does not replace the saved project. Downloaded files and ComfyUI output files remain separately.
 - The app makes separate ComfyUI jobs for audio, tracking and rendering because the user chooses and reviews results between steps. It is one interface, not one unattended monolithic ComfyUI graph.
 
 ## Local data and security

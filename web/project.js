@@ -5,9 +5,9 @@ function openProjectDb(){if(projectStore.db)return projectStore.db;projectStore.
 async function projectAccess(mode,action){const db=await openProjectDb();return new Promise((resolve,reject)=>{const tx=db.transaction('project',mode),request=action(tx.objectStore('project'));tx.oncomplete=()=>resolve(request.result);tx.onerror=()=>reject(tx.error);});}
 function plainTurn(t){const repaired=t.repaired?.blob?{...t.repaired,url:null,takeIdentity:null}:null;return {...t,source:null,take:state.takes.indexOf(t.take),track:t.track?{...t.track,source:null,url:null,markedUrl:null}:null,repaired};}
 async function saveProject(){
- if(projectStore.restoring||!state.sourceFile||(!dialogue.turns.length&&!state.takes.length))return; // Opening a file alone must not replace saved work.
+ if(projectStore.restoring||!state.sourceFile||(!dialogue.turns.length&&!state.takes.length&&!tracksOn()))return; // Opening a file alone must not replace saved work.
  const active=activeTurn();if(active)saveTurnFields(active);
- const data={source:state.sourceFile,start:state.start,end:state.end,chosen:state.chosen,takes:state.takes.map(({blob,name,meta})=>({blob,name,meta})),turns:dialogue.turns.map(plainTurn),active:dialogue.active,words:transcript.words,mode:$('repairMode').value,fields:Object.fromEntries(TURN_FIELDS.map(id=>[id,$(id).value])),voiceFile:$('voiceRef').files[0]||null,savedAt:Date.now()};
+ const data={source:state.sourceFile,start:state.start,end:state.end,chosen:state.chosen,takes:state.takes.map(({blob,name,meta})=>({blob,name,meta})),turns:dialogue.turns.map(plainTurn),active:dialogue.active,words:transcript.words,mode:$('repairMode').value,fields:Object.fromEntries(TURN_FIELDS.map(id=>[id,$(id).value])),voiceFile:$('voiceRef').files[0]||null,tracks:tracksOn()?{stem:tracks.stem,levels:laneLevels()}:null,savedAt:Date.now()};
  await projectAccess('readwrite',store=>store.put(data,'current'));
 }
 function queueProjectSave(){clearTimeout(projectStore.timer);projectStore.timer=setTimeout(()=>saveProject().catch(e=>message('Could not save the project in this browser: '+e.message)),800);}
@@ -24,6 +24,7 @@ async function restoreProject(){
   for(const [id,value] of Object.entries(data.fields))$(id).value=value;$('repairMode').value=data.mode;syncRepairMode();setVoiceFile(data.voiceFile);refreshPrompt();
   transcript.words=data.words||[];renderTranscript();
   dialogue.turns=data.turns.map(t=>reviveTurn(t,state.sourceFile));dialogue.active=null;renderTurns();
+  if(data.tracks)await openTracks(data.tracks.stem,data.tracks.levels);
   const active=dialogue.turns.find(t=>t.id===data.active);if(active)openTurn(active);else{state.start=data.start;state.end=data.end;syncSelection();}
   message(`Project restored: ${data.source.name}.`);
  }finally{projectStore.restoring=false;}
